@@ -39,6 +39,7 @@ use crate::physical_plan::SendableRecordBatchStream;
 use super::{catalog::CatalogList, schema::SchemaProvider};
 
 pub(crate) const INFORMATION_SCHEMA: &str = "information_schema";
+pub(crate) const SCHEMATAS: &str = "schemata";
 pub(crate) const TABLES: &str = "tables";
 pub(crate) const VIEWS: &str = "views";
 pub(crate) const COLUMNS: &str = "columns";
@@ -72,6 +73,16 @@ struct InformationSchemaConfig {
 }
 
 impl InformationSchemaConfig {
+    async fn make_schematas(&self, builder: &mut InformationSchemaSchematasBuilder) {
+        for catalog_name in self.catalog_list.catalog_names() {
+            let catalog = self.catalog_list.catalog(&catalog_name).unwrap();
+
+            for schema_name in catalog.schema_names() {
+                builder.add_schemata(&catalog_name, &schema_name);
+            }
+        }
+    }
+
     /// Construct the `information_schema.tables` virtual table
     async fn make_tables(&self, builder: &mut InformationSchemaTablesBuilder) {
         // create a mem table with the names of tables
@@ -96,6 +107,7 @@ impl InformationSchemaConfig {
 
             // Add a final list for the information schema tables themselves
             builder.add_table(&catalog_name, INFORMATION_SCHEMA, TABLES, TableType::View);
+            builder.add_table(&catalog_name, INFORMATION_SCHEMA, SCHEMATAS, TableType::View);
             builder.add_table(&catalog_name, INFORMATION_SCHEMA, VIEWS, TableType::View);
             builder.add_table(
                 &catalog_name,
@@ -180,6 +192,7 @@ impl SchemaProvider for InformationSchemaProvider {
 
     fn table_names(&self) -> Vec<String> {
         vec![
+            SCHEMATAS.to_string(),
             TABLES.to_string(),
             VIEWS.to_string(),
             COLUMNS.to_string(),
@@ -189,7 +202,9 @@ impl SchemaProvider for InformationSchemaProvider {
 
     async fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
         let config = self.config.clone();
-        let table: Arc<dyn PartitionStream> = if name.eq_ignore_ascii_case("tables") {
+        let table: Arc<dyn PartitionStream> = if name.eq_ignore_ascii_case("schemata") {
+            Arc::new(InformationSchemaSchematas::new(config))
+        } else if name.eq_ignore_ascii_case("tables") {
             Arc::new(InformationSchemaTables::new(config))
         } else if name.eq_ignore_ascii_case("columns") {
             Arc::new(InformationSchemaColumns::new(config))
@@ -207,7 +222,94 @@ impl SchemaProvider for InformationSchemaProvider {
     }
 
     fn table_exist(&self, name: &str) -> bool {
-        matches!(name.to_ascii_lowercase().as_str(), TABLES | VIEWS | COLUMNS)
+        matches!(name.to_ascii_lowercase().as_str(), SCHEMATAS | TABLES | VIEWS | COLUMNS)
+    }
+}
+
+struct InformationSchemaSchematas {
+    schema: SchemaRef,
+    config: InformationSchemaConfig,
+}
+
+impl InformationSchemaSchematas {
+    fn new(config: InformationSchemaConfig) -> Self {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("catalog_name", DataType::Utf8, false),
+            Field::new("schema_name", DataType::Utf8, false),
+            Field::new("default_character_set_name", DataType::Utf8, false),
+            Field::new("default_collation_name", DataType::Utf8, false),
+            Field::new("sql_path", DataType::Utf8, false),
+        ]));
+
+        Self { schema, config }
+    }
+
+    fn builder(&self) -> InformationSchemaSchematasBuilder {
+        InformationSchemaSchematasBuilder {
+            catalog_names: StringBuilder::new(),
+            schema_names: StringBuilder::new(),
+            default_character_set_names: StringBuilder::new(),
+            default_collation_names: StringBuilder::new(),
+            sql_paths: StringBuilder::new(),
+            schema: self.schema.clone(),
+        }
+    }
+}
+
+impl PartitionStream for InformationSchemaSchematas {
+    fn schema(&self) -> &SchemaRef {
+        &self.schema
+    }
+
+    fn execute(&self, _ctx: Arc<TaskContext>) -> SendableRecordBatchStream {
+        let mut builder = self.builder();
+        let config = self.config.clone();
+        Box::pin(RecordBatchStreamAdapter::new(
+            self.schema.clone(),
+            // TODO: Stream this
+            futures::stream::once(async move {
+                config.make_schematas(&mut builder).await;
+                Ok(builder.finish())
+            }),
+        ))
+    }
+}
+
+struct InformationSchemaSchematasBuilder {
+    schema: SchemaRef,
+    catalog_names: StringBuilder,
+    schema_names: StringBuilder,
+    default_character_set_names: StringBuilder,
+    default_collation_names: StringBuilder,
+    sql_paths: StringBuilder,
+}
+
+impl InformationSchemaSchematasBuilder {
+    fn add_schemata(
+        &mut self,
+        catalog_name: impl AsRef<str>,
+        schema_name: impl AsRef<str>,
+    ) {
+        // Note: append_value is actually infallable.
+        self.catalog_names.append_value(catalog_name.as_ref());
+        self.schema_names.append_value(schema_name.as_ref());
+        self.default_character_set_names.append_value("utf8");
+        self.default_collation_names.append_value("utf8_general_ci");
+        self.sql_paths.append_null();
+    }
+
+    fn finish(&mut self) -> RecordBatch {
+        RecordBatch::try_new(
+            self.schema.clone(),
+            vec![
+                Arc::new(self.catalog_names.finish()),
+                Arc::new(self.schema_names.finish()),
+                Arc::new(self.default_character_set_names.finish()),
+                Arc::new(self.default_collation_names.finish()),
+                Arc::new(self.sql_paths.finish()),
+            ],
+        )
+        .unwrap()
     }
 }
 

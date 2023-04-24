@@ -479,7 +479,7 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
                     "Unsupported parameters to SHOW TABLES".to_string(),
                 ))
             } else {
-                let query = "SELECT * FROM information_schema.tables;";
+                let query = "SELECT table_name as tables FROM information_schema.tables where table_schema <> 'information_schema';";
                 let mut rewrite = DFParser::parse_sql(query)?;
                 assert_eq!(rewrite.len(), 1);
                 self.statement_to_plan(rewrite.pop_front().unwrap()) // length of rewrite is 1
