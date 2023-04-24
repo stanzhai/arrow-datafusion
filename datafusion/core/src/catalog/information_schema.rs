@@ -325,6 +325,7 @@ impl InformationSchemaTables {
             Field::new("table_schema", DataType::Utf8, false),
             Field::new("table_name", DataType::Utf8, false),
             Field::new("table_type", DataType::Utf8, false),
+            Field::new("table_comment", DataType::Utf8, true),
         ]));
 
         Self { schema, config }
@@ -336,6 +337,7 @@ impl InformationSchemaTables {
             schema_names: StringBuilder::new(),
             table_names: StringBuilder::new(),
             table_types: StringBuilder::new(),
+            table_comments: StringBuilder::new(),
             schema: self.schema.clone(),
         }
     }
@@ -369,6 +371,7 @@ struct InformationSchemaTablesBuilder {
     schema_names: StringBuilder,
     table_names: StringBuilder,
     table_types: StringBuilder,
+    table_comments: StringBuilder,
 }
 
 impl InformationSchemaTablesBuilder {
@@ -388,6 +391,7 @@ impl InformationSchemaTablesBuilder {
             TableType::View => "VIEW",
             TableType::Temporary => "LOCAL TEMPORARY",
         });
+        self.table_comments.append_null();
     }
 
     fn finish(&mut self) -> RecordBatch {
@@ -398,6 +402,7 @@ impl InformationSchemaTablesBuilder {
                 Arc::new(self.schema_names.finish()),
                 Arc::new(self.table_names.finish()),
                 Arc::new(self.table_types.finish()),
+                Arc::new(self.table_comments.finish()),
             ],
         )
         .unwrap()
