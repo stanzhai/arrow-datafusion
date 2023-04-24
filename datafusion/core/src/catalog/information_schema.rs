@@ -238,7 +238,7 @@ impl InformationSchemaSchematas {
             Field::new("schema_name", DataType::Utf8, false),
             Field::new("default_character_set_name", DataType::Utf8, false),
             Field::new("default_collation_name", DataType::Utf8, false),
-            Field::new("sql_path", DataType::Utf8, false),
+            Field::new("sql_path", DataType::Utf8, true),
         ]));
 
         Self { schema, config }
