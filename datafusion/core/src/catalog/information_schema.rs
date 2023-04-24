@@ -514,6 +514,7 @@ impl InformationSchemaColumns {
             Field::new("numeric_scale", DataType::UInt64, true),
             Field::new("datetime_precision", DataType::UInt64, true),
             Field::new("interval_type", DataType::Utf8, true),
+            Field::new("column_type", DataType::Utf8, true),
         ]));
 
         Self { schema, config }
@@ -541,6 +542,7 @@ impl InformationSchemaColumns {
             numeric_scales: UInt64Builder::with_capacity(default_capacity),
             datetime_precisions: UInt64Builder::with_capacity(default_capacity),
             interval_types: StringBuilder::new(),
+            column_types: StringBuilder::new(),
             schema: self.schema.clone(),
         }
     }
@@ -585,6 +587,7 @@ struct InformationSchemaColumnsBuilder {
     numeric_scales: UInt64Builder,
     datetime_precisions: UInt64Builder,
     interval_types: StringBuilder,
+    column_types: StringBuilder,
 }
 
 impl InformationSchemaColumnsBuilder {
@@ -682,6 +685,7 @@ impl InformationSchemaColumnsBuilder {
 
         self.datetime_precisions.append_option(None);
         self.interval_types.append_null();
+        self.column_types.append_value(format!("{data_type:?}").to_lowercase());
     }
 
     fn finish(&mut self) -> RecordBatch {
@@ -703,6 +707,7 @@ impl InformationSchemaColumnsBuilder {
                 Arc::new(self.numeric_scales.finish()),
                 Arc::new(self.datetime_precisions.finish()),
                 Arc::new(self.interval_types.finish()),
+                Arc::new(self.column_types.finish()),
             ],
         )
         .unwrap()
