@@ -27,6 +27,7 @@ use arrow::{
     datatypes::{DataType, Field, Schema, SchemaRef},
     record_batch::RecordBatch,
 };
+use arrow_schema::FieldRef;
 
 use crate::config::{ConfigEntry, ConfigOptions};
 use crate::datasource::streaming::{PartitionStream, StreamingTable};
@@ -160,10 +161,8 @@ impl InformationSchemaConfig {
                                 &catalog_name,
                                 &schema_name,
                                 &table_name,
-                                field.name(),
-                                i,
-                                field.is_nullable(),
-                                field.data_type(),
+                                field,
+                                i
                             )
                         }
                     }
@@ -605,19 +604,20 @@ impl InformationSchemaColumnsBuilder {
         catalog_name: impl AsRef<str>,
         schema_name: impl AsRef<str>,
         table_name: impl AsRef<str>,
-        column_name: impl AsRef<str>,
+        field: &FieldRef,
         column_position: usize,
-        is_nullable: bool,
-        data_type: &DataType,
     ) {
         use DataType::*;
+        let column_name = field.name();
+        let is_nullable = field.is_nullable();
+        let data_type = field.data_type();
 
         // Note: append_value is actually infallable.
         self.catalog_names.append_value(catalog_name.as_ref());
         self.schema_names.append_value(schema_name.as_ref());
         self.table_names.append_value(table_name.as_ref());
 
-        self.column_names.append_value(column_name.as_ref());
+        self.column_names.append_value(column_name);
 
         self.ordinal_positions.append_value(column_position as u64);
 
@@ -694,7 +694,7 @@ impl InformationSchemaColumnsBuilder {
         self.datetime_precisions.append_option(None);
         self.interval_types.append_null();
         self.column_types.append_value(format!("{data_type:?}").to_lowercase());
-        self.column_comments.append_null();
+        self.column_comments.append_option(field.metadata().get("_comment"));
     }
 
     fn finish(&mut self) -> RecordBatch {
