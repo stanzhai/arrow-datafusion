@@ -642,8 +642,14 @@ impl InformationSchemaColumnsBuilder {
         let nullable_str = if is_nullable { "YES" } else { "NO" };
         self.is_nullables.append_value(nullable_str);
 
-        // "System supplied type" --> Use debug format of the datatype
-        self.data_types.append_value(format!("{data_type:?}"));
+        // MySQL compatible
+        match data_type {
+            Utf8 => self.data_types.append_value("varchar"),
+            Float64 => self.data_types.append_value("bigint"),
+            Date64 => self.data_types.append_value("datetime"),
+            // "System supplied type" --> Use debug format of the datatype
+            _ => self.data_types.append_value(format!("{data_type:?}"))
+        }
 
         // "If data_type identifies a character or bit string type, the
         // declared maximum length; null for all other data types or
