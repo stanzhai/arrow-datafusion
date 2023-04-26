@@ -28,6 +28,7 @@ use arrow::{
     record_batch::RecordBatch,
 };
 use arrow_schema::FieldRef;
+use datafusion_common::ScalarValue::Utf8;
 
 use crate::config::{ConfigEntry, ConfigOptions};
 use crate::datasource::streaming::{PartitionStream, StreamingTable};
@@ -517,9 +518,14 @@ impl InformationSchemaColumns {
             Field::new("numeric_precision_radix", DataType::UInt64, true),
             Field::new("numeric_scale", DataType::UInt64, true),
             Field::new("datetime_precision", DataType::UInt64, true),
+            // MySQL
             Field::new("interval_type", DataType::Utf8, true),
             Field::new("column_type", DataType::Utf8, true),
             Field::new("column_comment", DataType::Utf8, true),
+            Field::new("character_set_name", DataType::Utf8, true),
+            Field::new("collation_name", DataType::Utf8, true),
+            Field::new("column_key", DataType::Utf8, true),
+            Field::new("extra", DataType::Utf8, true),
         ]));
 
         Self { schema, config }
@@ -549,6 +555,10 @@ impl InformationSchemaColumns {
             interval_types: StringBuilder::new(),
             column_types: StringBuilder::new(),
             column_comments: StringBuilder::new(),
+            character_set_names: StringBuilder::new(),
+            collation_names: StringBuilder::new(),
+            extras: StringBuilder::new(),
+            column_keys: StringBuilder::new(),
             schema: self.schema.clone(),
         }
     }
@@ -595,6 +605,10 @@ struct InformationSchemaColumnsBuilder {
     interval_types: StringBuilder,
     column_types: StringBuilder,
     column_comments: StringBuilder,
+    character_set_names: StringBuilder,
+    collation_names: StringBuilder,
+    column_keys: StringBuilder,
+    extras: StringBuilder,
 }
 
 impl InformationSchemaColumnsBuilder {
@@ -692,9 +706,22 @@ impl InformationSchemaColumnsBuilder {
         self.numeric_scales.append_option(numeric_scale);
 
         self.datetime_precisions.append_option(None);
+
         self.interval_types.append_null();
         self.column_types.append_value(format!("{data_type:?}").to_lowercase());
         self.column_comments.append_option(field.metadata().get("_comment"));
+        match data_type {
+            Utf8 => {
+                self.character_set_names.append_value("utf8");
+                self.collation_names.append_value("utf8_general_ci");
+            }
+            _ => {
+                self.character_set_names.append_null();
+                self.collation_names.append_null();
+            }
+        }
+        self.column_keys.append_null();
+        self.extras.append_null();
     }
 
     fn finish(&mut self) -> RecordBatch {
