@@ -745,6 +745,10 @@ impl InformationSchemaColumnsBuilder {
                 Arc::new(self.interval_types.finish()),
                 Arc::new(self.column_types.finish()),
                 Arc::new(self.column_comments.finish()),
+                Arc::new(self.character_set_names.finish()),
+                Arc::new(self.collation_names.finish()),
+                Arc::new(self.column_keys.finish()),
+                Arc::new(self.extras.finish()),
             ],
         )
         .unwrap()
